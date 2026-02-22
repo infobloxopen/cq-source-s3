@@ -16,16 +16,12 @@ Arrow record batches to any CloudQuery destination.
 ## Container Image
 
 Pre-built multi-architecture Docker images (linux/amd64, linux/arm64) are published
-on every release to both GCR and GHCR.
+on every release to GHCR.
 
 ### Pull and Run
 
 ```bash
-# GitHub Container Registry
 docker run -p 7777:7777 ghcr.io/infobloxopen/cq-source-s3:latest
-
-# Google Container Registry
-docker run -p 7777:7777 gcr.io/<PROJECT_ID>/cq-source-s3:latest
 ```
 
 The plugin starts and listens on gRPC port 7777.

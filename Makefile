@@ -59,13 +59,10 @@ tag-release: ## Create and push a release tag (usage: make tag-release RELEASE_V
 	git tag -a v$(RELEASE_VERSION)-$(GIT_HASH) -m "Release v$(RELEASE_VERSION)-$(GIT_HASH)"
 	git push origin v$(RELEASE_VERSION)-$(GIT_HASH)
 
-docker-push: ## Push Docker image to GCR and GHCR
-	@test -n "$(GCP_PROJECT_ID)" || (echo "GCP_PROJECT_ID is required" && exit 1)
+docker-push: ## Push Docker image to GHCR
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
-		-t gcr.io/$(GCP_PROJECT_ID)/$(IMAGE_NAME):$(VERSION)-$(GIT_HASH) \
-		-t gcr.io/$(GCP_PROJECT_ID)/$(IMAGE_NAME):latest \
 		-t ghcr.io/infobloxopen/$(IMAGE_NAME):$(VERSION)-$(GIT_HASH) \
 		-t ghcr.io/infobloxopen/$(IMAGE_NAME):latest \
 		--push \
