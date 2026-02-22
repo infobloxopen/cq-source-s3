@@ -1,0 +1,41 @@
+# Binaries
+cq-source-s3
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env*
+!.env.example
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+
+# Coverage
+coverage.out
+coverage.html
