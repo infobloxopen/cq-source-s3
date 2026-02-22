@@ -1,4 +1,4 @@
-.PHONY: help build test lint vet tidy clean test-coverage e2e docker-build docker-build-multiarch docker-push
+.PHONY: help build test lint vet tidy clean test-coverage e2e docker-build docker-build-multiarch docker-push tag-release
 .DEFAULT_GOAL := help
 
 # Build metadata
@@ -53,6 +53,11 @@ docker-build-multiarch: ## Build multi-arch Docker image (linux/amd64 + linux/ar
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION)-$(GIT_HASH) \
 		.
+
+tag-release: ## Create and push a release tag (usage: make tag-release RELEASE_VERSION=0.1.0)
+	@test -n "$(RELEASE_VERSION)" || (echo "RELEASE_VERSION is required (e.g. make tag-release RELEASE_VERSION=0.1.0)" && exit 1)
+	git tag -a v$(RELEASE_VERSION)-$(GIT_HASH) -m "Release v$(RELEASE_VERSION)-$(GIT_HASH)"
+	git push origin v$(RELEASE_VERSION)-$(GIT_HASH)
 
 docker-push: ## Push Docker image to GCR and GHCR
 	@test -n "$(GCP_PROJECT_ID)" || (echo "GCP_PROJECT_ID is required" && exit 1)
