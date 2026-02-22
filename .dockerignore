@@ -1,0 +1,47 @@
+# Build context exclusions — keep the Docker context minimal
+# Only go.mod, go.sum, *.go source files, and README.md are needed
+
+# Version control
+.git/
+.gitignore
+
+# Spec & design docs
+specs/
+docs/
+.specify/
+
+# Markdown (except README)
+*.md
+!README.md
+
+# Tests (not needed in image)
+test/
+
+# IDE & editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+coverage.out
+coverage.html
+*.log
+*.tmp
+
+# CI/CD
+.github/
+
+# Environment
+.env*
+!.env.example
+
+# Binary (built inside container)
+cq-source-s3

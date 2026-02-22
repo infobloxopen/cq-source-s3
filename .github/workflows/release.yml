@@ -1,0 +1,180 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  GCR_IMAGE: gcr.io/${{ vars.GCP_PROJECT_ID }}/cq-source-s3
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/cq-source-s3
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3
+          DEFAULT_REGION: us-east-1
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/_localstack/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run go vet
+        run: go vet ./...
+      - name: Run unit tests
+        run: go test -v -count=1 -race ./client/... ./internal/... ./plugin/...
+      - name: Run E2E tests
+        env:
+          CQ_S3_TEST_ENDPOINT: http://localhost:4566
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION: us-east-1
+        run: go test -v -count=1 -race ./test/...
+
+  build-push:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      metadata: ${{ steps.meta.outputs.json }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GCR
+        uses: docker/login-action@v3
+        with:
+          registry: gcr.io
+          username: _json_key
+          password: ${{ secrets.GCR_JSON_KEY }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GCR_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=raw,value=v${{ steps.version.outputs.version }}-${{ github.sha }}
+            type=semver,pattern=v{{version}},value=${{ github.ref_name }}
+            type=semver,pattern=v{{major}}.{{minor}},value=${{ github.ref_name }}
+            type=raw,value=latest
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate release body
+        id: body
+        run: |
+          DIGEST="${{ needs.build-push.outputs.digest }}"
+          VERSION="${{ needs.build-push.outputs.version }}"
+          TAG="${{ github.ref_name }}"
+          GCR="${{ env.GCR_IMAGE }}"
+          GHCR="${{ env.GHCR_IMAGE }}"
+
+          cat <<EOF > release-body.md
+          ## Container Images
+
+          ### Pull Commands
+
+          \`\`\`bash
+          # Google Container Registry
+          docker pull ${GCR}:${TAG}
+
+          # GitHub Container Registry
+          docker pull ${GHCR}:${TAG}
+          \`\`\`
+
+          ### Image Details
+
+          | Property | Value |
+          |----------|-------|
+          | **Digest** | \`${DIGEST}\` |
+          | **Platforms** | linux/amd64, linux/arm64 |
+          | **GCR** | \`${GCR}:${TAG}\` |
+          | **GHCR** | \`${GHCR}:${TAG}\` |
+
+          ### Quick Start
+
+          \`\`\`bash
+          docker run -p 7777:7777 ${GHCR}:${TAG}
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-body.md
+          generate_release_notes: true
+          append_body: true
+          draft: false
+          prerelease: false

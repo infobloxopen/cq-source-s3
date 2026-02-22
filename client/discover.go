@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/aws/aws-sdk-go-v2/aws"

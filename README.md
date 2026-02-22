@@ -13,6 +13,61 @@ Arrow record batches to any CloudQuery destination.
 - **Schema validation**: Files under the same prefix must share a compatible schema
 - **Graceful error handling**: Deleted or malformed objects are warned and skipped
 
+## Container Image
+
+Pre-built multi-architecture Docker images (linux/amd64, linux/arm64) are published
+on every release to both GCR and GHCR.
+
+### Pull and Run
+
+```bash
+# GitHub Container Registry
+docker run -p 7777:7777 ghcr.io/infobloxopen/cq-source-s3:latest
+
+# Google Container Registry
+docker run -p 7777:7777 gcr.io/<PROJECT_ID>/cq-source-s3:latest
+```
+
+The plugin starts and listens on gRPC port 7777.
+
+### With AWS Credentials
+
+```bash
+docker run -p 7777:7777 \
+  -e AWS_ACCESS_KEY_ID=AKIA... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  -e AWS_REGION=us-east-1 \
+  ghcr.io/infobloxopen/cq-source-s3:v1.2.3
+```
+
+### Custom Listen Address
+
+```bash
+docker run -p 8080:8080 ghcr.io/infobloxopen/cq-source-s3:latest serve --address "[::]:8080"
+```
+
+### Building the Image Locally
+
+```bash
+# Single-arch (current platform)
+make docker-build
+
+# Multi-arch (requires buildx)
+docker buildx create --name multiarch --driver docker-container --use
+make docker-build-multiarch
+```
+
+### Image Tags
+
+Each release produces these tags:
+
+| Tag | Example | Description |
+|-----|---------|-------------|
+| `v<semver>-<sha>` | `v1.2.3-abc1234` | Exact version + commit (primary) |
+| `v<semver>` | `v1.2.3` | Semver release |
+| `v<major>.<minor>` | `v1.2` | Minor release (rolls forward) |
+| `latest` | `latest` | Most recent release |
+
 ## Installation
 
 ```bash
