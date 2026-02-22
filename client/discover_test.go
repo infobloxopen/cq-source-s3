@@ -21,8 +21,8 @@ func TestGroupByPrefix(t *testing.T) {
 
 	// Tables are sorted by name
 	expected := []struct {
-		name       string
-		objectCnt  int
+		name      string
+		objectCnt int
 	}{
 		{"data_2024", 2},
 		{"logs", 1},
