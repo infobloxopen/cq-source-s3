@@ -100,9 +100,8 @@ jobs:
           images: |
             ${{ env.IMAGE }}
           tags: |
-            type=raw,value=v${{ steps.version.outputs.version }}-${{ github.sha }}
-            type=semver,pattern=v{{version}},value=${{ github.ref_name }}
-            type=semver,pattern=v{{major}}.{{minor}},value=${{ github.ref_name }}
+            type=raw,value=${{ github.ref_name }}
+            type=raw,value=${{ github.ref_name }}-${{ github.sha }}
             type=raw,value=latest
 
       - name: Build and push
