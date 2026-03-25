@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/cloudquery/plugin-sdk/v4/message"
 	"github.com/cloudquery/plugin-sdk/v4/plugin"
@@ -183,6 +184,11 @@ func (c *Client) syncObject(ctx context.Context, table *schema.Table, obj S3Obje
 	var totalRows int64
 	for rec := range records {
 		totalRows += rec.NumRows()
+		// Add cq:table_name metadata to the Arrow schema so downstream
+		// destination plugins (e.g., cq-destination-postgresql) can identify
+		// which table the record belongs to. The plugin-sdk batchwriter
+		// expects this metadata key to be present on every record batch.
+		rec = withTableMetadata(rec, table.Name)
 		res <- &message.SyncInsert{Record: rec}
 	}
 
@@ -216,6 +222,32 @@ func (c *Client) syncObject(ctx context.Context, table *schema.Table, obj S3Obje
 		Msg("object synced")
 
 	return nil
+}
+
+// withTableMetadata returns a new Arrow RecordBatch whose schema includes
+// the "cq:table_name" metadata key. Destination plugins use this metadata
+// to route records to the correct table during writes.
+func withTableMetadata(rec arrow.RecordBatch, tableName string) arrow.RecordBatch {
+	sc := rec.Schema()
+	md := sc.Metadata()
+
+	// Already has the metadata — nothing to do.
+	if idx := md.FindKey("cq:table_name"); idx >= 0 {
+		return rec
+	}
+
+	mdMap := md.ToMap()
+	mdMap["cq:table_name"] = tableName
+	newMD := arrow.MetadataFrom(mdMap)
+
+	newSchema := arrow.NewSchema(sc.Fields(), &newMD)
+
+	cols := make([]arrow.Array, rec.NumCols())
+	for i := range cols {
+		cols[i] = rec.Column(i)
+	}
+	newRec := array.NewRecordBatch(newSchema, cols, rec.NumRows())
+	return newRec
 }
 
 // isMalformedParquetError checks if the error is from a malformed Parquet file.
