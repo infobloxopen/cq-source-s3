@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/cloudquery/plugin-sdk/v4/message"
 	"github.com/cloudquery/plugin-sdk/v4/schema"
 )
@@ -120,5 +123,82 @@ func TestContextCancellation(t *testing.T) {
 	cancel()
 	if ctx.Err() == nil {
 		t.Error("expected context to be cancelled")
+	}
+}
+
+func makeTestRecordBatch(md *arrow.Metadata) arrow.RecordBatch {
+	sc := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.BinaryTypes.String},
+		{Name: "name", Type: arrow.BinaryTypes.String},
+	}, md)
+
+	bldr := array.NewRecordBuilder(memory.DefaultAllocator, sc)
+	defer bldr.Release()
+
+	bldr.Field(0).(*array.StringBuilder).Append("abc")
+	bldr.Field(1).(*array.StringBuilder).Append("test-name")
+
+	return bldr.NewRecord()
+}
+
+func TestWithTableMetadata_AddsMetadata(t *testing.T) {
+	rec := makeTestRecordBatch(nil)
+	defer rec.Release()
+
+	result := withTableMetadata(rec, "my_table")
+	defer result.Release()
+
+	md := result.Schema().Metadata()
+	idx := md.FindKey("cq:table_name")
+	if idx < 0 {
+		t.Fatal("expected cq:table_name metadata to be present")
+	}
+	if md.Values()[idx] != "my_table" {
+		t.Errorf("cq:table_name = %q, want %q", md.Values()[idx], "my_table")
+	}
+
+	// Data should be preserved
+	if result.NumRows() != 1 {
+		t.Errorf("NumRows = %d, want 1", result.NumRows())
+	}
+	if result.NumCols() != 2 {
+		t.Errorf("NumCols = %d, want 2", result.NumCols())
+	}
+}
+
+func TestWithTableMetadata_PreservesExistingMetadata(t *testing.T) {
+	existing := arrow.MetadataFrom(map[string]string{
+		"custom_key": "custom_value",
+	})
+	rec := makeTestRecordBatch(&existing)
+	defer rec.Release()
+
+	result := withTableMetadata(rec, "my_table")
+	defer result.Release()
+
+	md := result.Schema().Metadata()
+
+	// Should have both keys
+	if v, ok := md.GetValue("custom_key"); !ok || v != "custom_value" {
+		t.Errorf("custom_key = %q, want %q", v, "custom_value")
+	}
+	if v, ok := md.GetValue("cq:table_name"); !ok || v != "my_table" {
+		t.Errorf("cq:table_name = %q, want %q", v, "my_table")
+	}
+}
+
+func TestWithTableMetadata_SkipsWhenAlreadyPresent(t *testing.T) {
+	existing := arrow.MetadataFrom(map[string]string{
+		"cq:table_name": "original_table",
+	})
+	rec := makeTestRecordBatch(&existing)
+	defer rec.Release()
+
+	result := withTableMetadata(rec, "different_table")
+
+	// Should NOT overwrite — returns the original record
+	md := result.Schema().Metadata()
+	if v, ok := md.GetValue("cq:table_name"); !ok || v != "original_table" {
+		t.Errorf("cq:table_name = %q, want %q (should not overwrite)", v, "original_table")
 	}
 }

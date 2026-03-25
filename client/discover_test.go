@@ -3,6 +3,9 @@ package client
 import (
 	"testing"
 	"time"
+
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/cloudquery/plugin-sdk/v4/schema"
 )
 
 func TestGroupByPrefix(t *testing.T) {
@@ -123,5 +126,88 @@ func TestMaxLastModified_Empty(t *testing.T) {
 	max := maxLastModified(nil)
 	if !max.IsZero() {
 		t.Errorf("maxLastModified(nil) = %v, want zero", max)
+	}
+}
+
+func TestAddCqIDs_SkipsWhenAlreadyPresent(t *testing.T) {
+	// Simulate columns from a Parquet file written by another CQ source plugin
+	// that already has _cq_id and _cq_parent_id.
+	columns := schema.ColumnList{
+		schema.NewColumnFromArrowField(arrow.Field{Name: "_cq_sync_time", Type: arrow.FixedWidthTypes.Timestamp_us}),
+		schema.NewColumnFromArrowField(arrow.Field{Name: "_cq_source_name", Type: arrow.BinaryTypes.String}),
+		schema.NewColumnFromArrowField(arrow.Field{Name: "_cq_id", Type: arrow.BinaryTypes.String}),
+		schema.NewColumnFromArrowField(arrow.Field{Name: "_cq_parent_id", Type: arrow.BinaryTypes.String}),
+		schema.NewColumnFromArrowField(arrow.Field{Name: "name", Type: arrow.BinaryTypes.String}),
+		schema.NewColumnFromArrowField(arrow.Field{Name: "namespace", Type: arrow.BinaryTypes.String}),
+	}
+
+	table := &schema.Table{
+		Name:    "k8s_core_pods",
+		Columns: columns,
+	}
+
+	// Apply the same logic as discover.go
+	hasCqID := false
+	for _, col := range table.Columns {
+		if col.Name == "_cq_id" {
+			hasCqID = true
+			break
+		}
+	}
+	if !hasCqID {
+		schema.AddCqIDs(table)
+	}
+
+	// Count _cq_id columns — should be exactly 1 (no duplicates)
+	count := 0
+	for _, col := range table.Columns {
+		if col.Name == "_cq_id" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 _cq_id column, got %d", count)
+	}
+
+	// Total columns should be unchanged
+	if len(table.Columns) != 6 {
+		t.Errorf("expected 6 columns, got %d", len(table.Columns))
+	}
+}
+
+func TestAddCqIDs_AddsWhenMissing(t *testing.T) {
+	// Simulate columns from a Parquet file that does NOT have CQ metadata.
+	columns := schema.ColumnList{
+		schema.NewColumnFromArrowField(arrow.Field{Name: "id", Type: arrow.BinaryTypes.String}),
+		schema.NewColumnFromArrowField(arrow.Field{Name: "name", Type: arrow.BinaryTypes.String}),
+	}
+
+	table := &schema.Table{
+		Name:    "custom_table",
+		Columns: columns,
+	}
+
+	hasCqID := false
+	for _, col := range table.Columns {
+		if col.Name == "_cq_id" {
+			hasCqID = true
+			break
+		}
+	}
+	if !hasCqID {
+		schema.AddCqIDs(table)
+	}
+
+	// Should now have _cq_id and _cq_parent_id added
+	found := map[string]bool{}
+	for _, col := range table.Columns {
+		found[col.Name] = true
+	}
+
+	if !found["_cq_id"] {
+		t.Error("expected _cq_id column to be added")
+	}
+	if !found["_cq_parent_id"] {
+		t.Error("expected _cq_parent_id column to be added")
 	}
 }
