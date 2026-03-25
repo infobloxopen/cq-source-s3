@@ -79,7 +79,19 @@ func (c *Client) discover(ctx context.Context) ([]DiscoveredTable, error) {
 			Columns:       columns,
 			IsIncremental: true,
 		}
-		schema.AddCqIDs(table)
+		// Only add CQ ID columns if they don't already exist in the Parquet schema.
+		// Parquet files written by other CQ source plugins (e.g., ibcq-source-k8s
+		// via cq-destination-s3) already contain _cq_id and _cq_parent_id columns.
+		hasCqID := false
+		for _, col := range table.Columns {
+			if col.Name == "_cq_id" {
+				hasCqID = true
+				break
+			}
+		}
+		if !hasCqID {
+			schema.AddCqIDs(table)
+		}
 		tables[i].Table = table
 	}
 
